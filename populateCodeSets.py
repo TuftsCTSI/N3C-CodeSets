@@ -1,8 +1,7 @@
 import os
-import sys
 import requests
 from datetime import datetime
-import time
+from time import sleep
 import csv
 
 def get_n3c_recommended_codeset_ids() -> list:
@@ -37,60 +36,61 @@ def get_csets_items(codeset_id: int) -> list:
         return
     return response.json()
 
-def update_csets_file(
-        all_csets: list,
-        n3c_recommended_codeset_ids: list,
+def get_researcher_details(researcher_query_fragment: str) -> list:
+    url = f"https://termhub-dev.azurewebsites.net/researchers?ids={researcher_query_fragment}"
+    response = requests.get(url)
+    if response.status_code != 200:
+        print(f"Failed to retrieve researcher details. Status code: {response.status_code}")
+        return
+    return response.json()
+
+def write_codeset_items(
+        detailed_codeset: dict,
         csets_items_fields: list,
-        csets_concept_fields: list,
-        csets_details_fields: list
+        csets_concept_fields: list
     ) -> None:
-    for cset in all_csets:
-        print("Updating details for codeset_id: ", cset["codeset_id"], end=" ")
-        codeset_id = cset["codeset_id"]
-        if codeset_id not in n3c_recommended_codeset_ids:
-            cset["n3c_recommended"] = "false"
-        else:
-            cset["n3c_recommended"] = "true"
-        cset_details = get_csets_details(codeset_id)
-        for field in csets_details_fields:
-            cset[field] = str(cset_details[field]).replace('\n', '').replace('\t', '')
-        print("...", end=" ")
-        time.sleep(1)
-        csets_items = get_csets_items(codeset_id)
-        with open("codeset_item.csv", "a", newline='') as f:
-            writer = csv.writer(f)
-            for item in csets_items['items']:
-                row = [codeset_id, cset["n3c_recommended"]] + [item[field] for field in csets_items_fields] + [item['concept'][field] for field in csets_concept_fields]
-                writer.writerow(row)
-    with open("codeset.csv", "w", newline='') as f:
+    cset = detailed_codeset
+    csets_items = get_csets_items(cset['codeset_id'])
+    with open("codeset_item.csv", "a", newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["codeset_id", "n3c_recommended"] + csets_details_fields)
-        for cset in all_csets:
-            row = [cset["codeset_id"], cset["n3c_recommended"]] + [cset[field] for field in csets_details_fields]
+        for item in csets_items['items']:
+            row = [cset['codeset_id'], cset["n3c_recommended"]] + [item[field] for field in csets_items_fields] + [item['concept'][field] for field in csets_concept_fields]
             writer.writerow(row)
+
+def add_csets_details(
+        cset: dict,
+        n3c_recommended_codeset_ids: list,
+        csets_details_fields: list
+    ) -> list:
+    codeset_id = cset["codeset_id"]
+    if codeset_id not in n3c_recommended_codeset_ids:
+        cset["n3c_recommended"] = "false"
+    else:
+        cset["n3c_recommended"] = "true"
+    cset_details = get_csets_details(codeset_id)
+    for field in csets_details_fields:
+        cset[field] = str(cset_details[field]).replace('\n', '').replace('\t', '')
+    return cset
+
+def write_run_metadata_entry() -> None:
+    if not os.path.exists("run_metadata.csv"):
+        with open("run_metadata.csv", "w") as f:
+            f.write("run_start_datetime\n")
+
+    # Get the date and time of the run
+    now = datetime.now()
+    date = now.strftime("%Y-%m-%d")
+    time = now.strftime("%H:%M:%S")
+
+    # Write the date and time to the run metadata file
+    with open("run_metadata.csv", "a") as f:
+        f.write(f"{date} {time}\n")
 
 def main():
 
-    # Create if nto exists a run metadata csv file that records the date and time of the run
-    # if not os.path.exists("run_metadata.csv"):
-    #     with open("run_metadata.csv", "w") as f:
-    #         f.write("date, time\n")
-
-    # # Get the date and time of the run
-    # now = datetime.now()
-    # date = now.strftime("%Y-%m-%d")
-    # time = now.strftime("%H:%M:%S")
-
-    # # Write the date and time to the run metadata file
-    # with open("run_metadata.csv", "a") as f:
-    #     f.write(f"{date}, {time}\n")
-
-    # ######
-        
-    # # Get the N3C recommended codeset ids
+    write_run_metadata_entry()
     n3c_codeset_ids = get_n3c_recommended_codeset_ids()
-
-    codesets = get_all_csets()[1000:1010]
+    codesets = get_all_csets()
 
     csets_items_fields = [
         "includeDescendants", "includeMapped", "isExcluded"
@@ -142,14 +142,49 @@ def main():
             "container_creator",
             "codeset_creator"
         ]
-
+    csets_researchers_fields = [
+        "emailAddress",
+        "institution",
+        "name",
+        "orcidId",
+        "signedDua",
+        "institutionsId",
+        "citizenScientist",
+        "multipassId",
+        "unaPath",
+        "internationalScientistWithDua",
+        "rid",
+    ]
     with open("codeset_item.csv", "w", newline='') as f:
         writer = csv.writer(f)
         writer.writerow(["codeset_id", "n3c_recommended"] + csets_items_fields + csets_concept_fields)
 
-    # Update the codeset.csv file
-    update_csets_file(codesets, n3c_codeset_ids, csets_items_fields, csets_concept_fields, csets_details_fields)
+    detailed_codesets = []
+    for cset in codesets:
+        print("Updating details for codeset_id: ", cset["codeset_id"], "(", len(detailed_codesets) + 1, "of", len(codesets),  ")", end=" ")
+        detailed_cset = add_csets_details(cset, n3c_codeset_ids, csets_details_fields)
+        write_codeset_items(detailed_cset, csets_items_fields, csets_concept_fields)
+        detailed_codesets.append(detailed_cset)
+        print("...", end=" ")
+        sleep(1)
+        print("Done")
 
+    with open("codeset.csv", "w", newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["codeset_id", "n3c_recommended"] + csets_details_fields)
+        for cset in detailed_codesets:
+            row = [cset["codeset_id"], cset["n3c_recommended"]] + [cset[field] for field in csets_details_fields]
+            writer.writerow(row)
 
+    # Get researcher information
+    researchers = set([c['container_created_by'] for c in detailed_codesets] + [c['codeset_created_by'] for c in detailed_codesets])
+    researcher_query_fragment = '&ids='.join(researchers)
+    researcher_details = get_researcher_details(researcher_query_fragment)
+    with open("researcher.csv", "w", newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["researcher_id"] + csets_researchers_fields)
+        for researcher in researchers:
+            writer.writerow([researcher] + [researcher_details[researcher][field] if field in researcher_details[researcher].keys() else None for field in csets_researchers_fields])
+            
 if __name__ == "__main__":
     main()
