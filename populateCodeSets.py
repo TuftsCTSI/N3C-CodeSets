@@ -57,19 +57,17 @@ def update_csets_file(
         print("...", end=" ")
         time.sleep(1)
         csets_items = get_csets_items(codeset_id)
-        with open("all_csets_items.csv", "a", newline='') as f:
+        with open("codeset_item.csv", "a", newline='') as f:
             writer = csv.writer(f)
             for item in csets_items['items']:
-                item['exclude'] = item['isExcluded']
                 row = [codeset_id, cset["n3c_recommended"]] + [item[field] for field in csets_items_fields] + [item['concept'][field] for field in csets_concept_fields]
                 writer.writerow(row)
-    with open("all_csets.csv", "w", newline='') as f:
+    with open("codeset.csv", "w", newline='') as f:
         writer = csv.writer(f)
         writer.writerow(["codeset_id", "n3c_recommended"] + csets_details_fields)
         for cset in all_csets:
             row = [cset["codeset_id"], cset["n3c_recommended"]] + [cset[field] for field in csets_details_fields]
             writer.writerow(row)
-    print("Updated all_csets.csv")
 
 def main():
 
@@ -95,7 +93,7 @@ def main():
     codesets = get_all_csets()[1000:1010]
 
     csets_items_fields = [
-        "includeDescendants", "includeMapped", "exclude"
+        "includeDescendants", "includeMapped", "isExcluded"
     ]
     csets_concept_fields = [
         "CONCEPT_ID", "CONCEPT_CLASS_ID", "CONCEPT_CODE", "CONCEPT_NAME", "DOMAIN_ID", "INVALID_REASON", "STANDARD_CONCEPT", "VOCABULARY_ID", "VALID_START_DATE", "VALID_END_DATE"
@@ -136,14 +134,20 @@ def main():
             "container_created_by",
             "container_created_at",
             "omop_vocab_version",
-            "container_rid"
+            "container_rid",
+            "distinct_person_cnt",
+            "total_cnt",
+            "total_cnt_from_term_usage",
+            "concepts",
+            "container_creator",
+            "codeset_creator"
         ]
 
-    with open("all_csets_items.csv", "w", newline='') as f:
+    with open("codeset_item.csv", "w", newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["codeset_id", "n3c_recommended"] + csets_items_fields + [field.lower() for field in csets_concept_fields])
+        writer.writerow(["codeset_id", "n3c_recommended"] + csets_items_fields + csets_concept_fields)
 
-    # Update the all_csets.csv file
+    # Update the codeset.csv file
     update_csets_file(codesets, n3c_codeset_ids, csets_items_fields, csets_concept_fields, csets_details_fields)
 
 
