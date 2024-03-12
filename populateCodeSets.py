@@ -53,6 +53,11 @@ def write_codeset_items(
     csets_items = get_csets_items(cset['codeset_id'])
     with open("codeset_item.csv", "a", newline='') as f:
         writer = csv.writer(f)
+        if not csets_items:
+            print(f"Unable to retrieve csets_items for codeset_id: {cset['codeset_id']}")
+            row = [cset['codeset_id'], "Access Error"] + [""] * (len(csets_items_fields) + len(csets_concept_fields))
+            writer.writerow(row)
+            return
         for item in csets_items['items']:
             row = [cset['codeset_id'], cset["n3c_recommended"]] + [item[field] for field in csets_items_fields] + [item['concept'][field] for field in csets_concept_fields]
             writer.writerow(row)
@@ -86,11 +91,23 @@ def write_run_metadata_entry() -> None:
     with open("run_metadata.csv", "a") as f:
         f.write(f"{date} {time}\n")
 
+def get_codeset_ids_with_existing_items() -> list:
+    if not os.path.exists("codeset_item.csv"):
+        return []
+    with open("codeset_item.csv", "r") as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        codeset_id_index = header.index("codeset_id")
+        codeset_ids = [row[codeset_id_index] for row in reader]
+    return list(set(codeset_ids))
+
 def main():
 
     write_run_metadata_entry()
     n3c_codeset_ids = get_n3c_recommended_codeset_ids()
     codesets = get_all_csets()
+    has_items = get_codeset_ids_with_existing_items()
+    overwrite = False
 
     csets_items_fields = [
         "includeDescendants", "includeMapped", "isExcluded"
@@ -155,29 +172,46 @@ def main():
         "internationalScientistWithDua",
         "rid",
     ]
-    with open("codeset_item.csv", "w", newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(["codeset_id", "n3c_recommended"] + csets_items_fields + csets_concept_fields)
 
-    detailed_codesets = []
-    for cset in codesets:
-        print("Updating details for codeset_id: ", cset["codeset_id"], "(", len(detailed_codesets) + 1, "of", len(codesets),  ")", end=" ")
+    if (overwrite or not has_items):
+        with open("codeset_item.csv", "w", newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["codeset_id", "n3c_recommended"] + csets_items_fields + csets_concept_fields)
+        with open("codeset.csv", "w", newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["codeset_id", "n3c_recommended"] + csets_details_fields)
+
+    for i, cset in enumerate(codesets):
+        print("Updating details for codeset_id: ", cset["codeset_id"], "(", i + 1, "of", len(codesets),  ")", end=" ")
         detailed_cset = add_csets_details(cset, n3c_codeset_ids, csets_details_fields)
-        write_codeset_items(detailed_cset, csets_items_fields, csets_concept_fields)
-        detailed_codesets.append(detailed_cset)
-        print("...", end=" ")
-        sleep(1)
-        print("Done")
-
-    with open("codeset.csv", "w", newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(["codeset_id", "n3c_recommended"] + csets_details_fields)
-        for cset in detailed_codesets:
+        sleep(.5)
+        if (str(cset["codeset_id"]) not in has_items):
+            write_codeset_items(detailed_cset, csets_items_fields, csets_concept_fields)
+            sleep(1)
+        else:
+            print("Skipping items for codeset_id: ", cset["codeset_id"])
+        with open("codeset.csv", "a", newline='') as f:
+            writer = csv.writer(f)
             row = [cset["codeset_id"], cset["n3c_recommended"]] + [cset[field] for field in csets_details_fields]
             writer.writerow(row)
+        print("...", end=" ")
+        print("Done")
 
     # Get researcher information
-    researchers = set([c['container_created_by'] for c in detailed_codesets] + [c['codeset_created_by'] for c in detailed_codesets])
+    
+    with open("codeset.csv", "r") as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        codeset_created_by_index = header.index("codeset_created_by")
+        container_created_by_index = header.index("container_created_by")
+        researchers = set()
+        for row in reader:
+            codeset_created_by = row[codeset_created_by_index]
+            container_created_by = row[container_created_by_index]
+            if codeset_created_by:
+                researchers.add(codeset_created_by)
+            if container_created_by:
+                researchers.add(container_created_by)
     researcher_query_fragment = '&ids='.join(researchers)
     researcher_details = get_researcher_details(researcher_query_fragment)
     with open("researcher.csv", "w", newline='') as f:
