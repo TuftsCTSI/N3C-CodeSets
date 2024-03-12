@@ -113,7 +113,7 @@ def main():
         "includeDescendants", "includeMapped", "isExcluded"
     ]
     csets_concept_fields = [
-        "CONCEPT_ID", "CONCEPT_CLASS_ID", "CONCEPT_CODE", "CONCEPT_NAME", "DOMAIN_ID", "INVALID_REASON", "STANDARD_CONCEPT", "VOCABULARY_ID", "VALID_START_DATE", "VALID_END_DATE"
+        "CONCEPT_ID"
     ]
     csets_details_fields = [
             "concept_set_version_title",
